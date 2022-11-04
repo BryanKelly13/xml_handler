@@ -100,23 +100,26 @@ def general_xml(file, fname):
     for t in sorted_uncal_list:
         line = ' '.join(str(x) for x in t)
         uncal_data.write(line + '\n')
-    uncal_data.close() 
+    uncal_data.close()
 
+    if (uncal_fit_list[0] == cal_fit_list[0]):  #case where the data is not energy calibrated
+            print("Calibrated data not detected, only generating uncalibrated data set!")
+            return uncal_data, []
+    else:
+        # calibrated data handling
 
-    # calibrated data handling
+        cal_list = []
+        for val in zip(cal_fit_list, cal_fit_err_list, cal_width_list, cal_width_err_list, cal_volume_list, cal_volume_err_list):  #interleaves lists together
+            cal_list.append(val)
+        sorted_cal_list = sorted(cal_list, reverse=True)
 
-    cal_list = []
-    for val in zip(cal_fit_list, cal_fit_err_list, cal_width_list, cal_width_err_list, cal_volume_list, cal_volume_err_list):  #interleaves lists together
-        cal_list.append(val)
-    sorted_cal_list = sorted(cal_list, reverse=True)
+        cal_data = open(fname + "_calibrated_data.txt", 'w')
+        for t in sorted_cal_list:
+            line = ' '.join(str(x) for x in t)
+            cal_data.write(line + '\n')
+        cal_data.close() 
 
-    cal_data = open(fname + "_calibrated_data.txt", 'w')
-    for t in sorted_cal_list:
-        line = ' '.join(str(x) for x in t)
-        cal_data.write(line + '\n')
-    cal_data.close() 
-
-    return uncal_data, cal_data
+        return uncal_data, cal_data
 
 def parseArgs():
     parser = argparse.ArgumentParser()
@@ -130,6 +133,8 @@ def main():
     i.e. python3 xml_handle_cebra.py filename.txt is how to run and will return 2 files:
     filename_uncalibrated_data.txt
     filename_calibrated_data.txt
+
+    Will only return one file if there is no calibrated data present in the xml file
     '''
     dir = os.getcwd()
     args = parseArgs()
