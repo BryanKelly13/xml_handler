@@ -1,4 +1,3 @@
-from codecs import ascii_decode
 import pathlib
 import shutil
 import xml.etree.ElementTree as ET
@@ -6,120 +5,82 @@ import os
 import os.path
 import argparse
 
-'''
-This is a branch of the xml_handle code that is modified to sort through gamma-ray spectra using the CeBrA detectors at the SPS
 
-Takes one xml file that has fitted peaks in HDTV, loops through and creates 2 data files, one with uncalibrated information and one with
-calibrated information --> the information is position, position err, width, width err, volume, volume err
-'''
+def extract_values(parent, tag_name):
+    """Helper function to extract 'value' and 'error' from a given tag."""
+    value = error = None
+    for elem in parent.iter(tag_name):
+        for child in elem:
+            if child.tag == 'value':
+                value = float(child.text)
+            elif child.tag == 'error':
+                error = float(child.text)
+    return value, error
+
+def write_to_file(data_list, fname, file_suffix, reverse=False):
+        # Interleave the data into tuples
+        combined = list(zip(
+            data_list['fit'],
+            data_list['fit_err'],
+            data_list['width'],
+            data_list['width_err'],
+            data_list['volume'],
+            data_list['volume_err']
+        ))
+
+        # Sort and write to file
+        combined_sorted = sorted(combined, reverse=reverse)
+        filename = f"{fname}_{file_suffix}.txt"
+        with open(filename, 'w') as f:
+            for entry in combined_sorted:
+                f.write('\t'.join(str(x) for x in entry) + '\n')
+        return filename
 
 def general_xml(file, fname):
-    mytree = ET.parse(file)
-    myroot = mytree.getroot()
- 
-    uncal_fit_list = []
-    uncal_fit_err_list = []
-    uncal_width_list = []
-    uncal_width_err_list = []
-    uncal_volume_list = []
-    uncal_volume_err_list = []
+    tree = ET.parse(file)
+    root = tree.getroot()
 
-    cal_fit_list = []
-    cal_fit_err_list = []
-    cal_width_list = []
-    cal_width_err_list = []
-    cal_volume_list = []
-    cal_volume_err_list = []
+    data = {
+        'uncal': {'fit': [], 'fit_err': [], 'width': [], 'width_err': [], 'volume': [], 'volume_err': []},
+        'cal':   {'fit': [], 'fit_err': [], 'width': [], 'width_err': [], 'volume': [], 'volume_err': []}
+    }
 
-    for fit in myroot:
-        for i in fit:
-            if i.tag == 'peak':
-                for child in i.iter():
-                    if child.tag == 'uncal':
-                        for j in child.iter():
-                            if j.tag == 'pos':
-                                for newchild in j.iter():
-                                    if newchild.tag == 'value':
-                                        fit_value = newchild.text
-                                        uncal_fit_list.append(float(fit_value))
-                                    elif newchild.tag == 'error':
-                                        fit_err = newchild.text
-                                        uncal_fit_err_list.append(float(fit_err))
-                            elif j.tag == 'vol':
-                                for newchild in j.iter():
-                                    if newchild.tag == 'value':
-                                        vol_value = newchild.text
-                                        uncal_volume_list.append(float(vol_value))
-                                    elif newchild.tag == 'error':
-                                        vol_err = newchild.text
-                                        uncal_volume_err_list.append(float(vol_err))
-                            elif j.tag == 'width':
-                                for newchild in j.iter():
-                                    if newchild.tag == 'value':
-                                        width_value = newchild.text
-                                        uncal_width_list.append(float(width_value))
-                                    elif newchild.tag == 'error':
-                                        width_err = newchild.text
-                                        uncal_width_err_list.append(float(width_err))
+    for fit in root.findall('.//peak'):
+        for region in ['uncal', 'cal']:
+            region_elem = fit.find(region)
+            if region_elem is not None:
+                pos_val, pos_err = extract_values(region_elem, 'pos')
+                width_val, width_err = extract_values(region_elem, 'width')
+                vol_val, vol_err = extract_values(region_elem, 'vol')
 
-                    #gets the calibrated data information                
-                    if child.tag == 'cal':
-                        for j in child.iter():
-                            if j.tag == 'pos':
-                                for newchild in j.iter():
-                                    if newchild.tag == 'value':
-                                        fit_value = newchild.text
-                                        cal_fit_list.append(float(fit_value))
-                                    elif newchild.tag == 'error':
-                                        fit_err = newchild.text
-                                        cal_fit_err_list.append(float(fit_err))
-                            elif j.tag == 'vol':
-                                for newchild in j.iter():
-                                    if newchild.tag == 'value':
-                                        vol_value = newchild.text
-                                        cal_volume_list.append(float(vol_value))
-                                    elif newchild.tag == 'error':
-                                        vol_err = newchild.text
-                                        cal_volume_err_list.append(float(vol_err))
-                            elif j.tag == 'width':
-                                for newchild in j.iter():
-                                    if newchild.tag == 'value':
-                                        width_value = newchild.text
-                                        cal_width_list.append(float(width_value))
-                                    elif newchild.tag == 'error':
-                                        width_err = newchild.text
-                                        cal_width_err_list.append(float(width_err))
+                if pos_val is not None:
+                    data[region]['fit'].append(round(pos_val, 4))
+                if pos_err is not None:
+                    data[region]['fit_err'].append(round(pos_err, 4))
+                if width_val is not None:
+                    width_val = abs(width_val) if region == 'cal' else width_val
+                    data[region]['width'].append(round(width_val, 4))
+                if width_err is not None:
+                    data[region]['width_err'].append(round(width_err, 4))
+                if vol_val is not None:
+                    data[region]['volume'].append(round(vol_val, 4))
+                if vol_err is not None:
+                    data[region]['volume_err'].append(round(vol_err, 4))
     
-    # uncalibrated data handling
-    uncal_list = []
-    for val in zip(uncal_fit_list, uncal_fit_err_list, uncal_width_list, uncal_width_err_list, uncal_volume_list, uncal_volume_err_list):  #interleaves lists together
-        uncal_list.append(val)
-    sorted_uncal_list = sorted(uncal_list, reverse=True)
+    # Write uncalibrated data
+    uncal_filename = write_to_file(data['uncal'], fname, "uncalibrated_data", reverse=True)
 
-    uncal_data = open(fname + "_uncalibrated_data.txt", 'w')
-    for t in sorted_uncal_list:
-        line = ' '.join(str(x) for x in t)
-        uncal_data.write(line + '\n')
-    uncal_data.close()
+    # Check for calibration
+    if not data['cal']['fit'] or data['uncal']['fit'][0] == data['cal']['fit'][0]:
+        print("Calibrated data not detected, only generating uncalibrated data set!")
+        return uncal_filename, None
 
-    if (uncal_fit_list[0] == cal_fit_list[0]):  #case where the data is not energy calibrated
-            print("Calibrated data not detected, only generating uncalibrated data set!")
-            return uncal_data, []
-    else:
-        # calibrated data handling
+    # Write calibrated data
+    cal_filename = write_to_file(data['cal'], fname, "calibrated_data", reverse=False)
+    print("Calibrated data present, generating two files for calibrated & uncalibrated data!")
+    
+    return data['uncal'], data['cal']
 
-        cal_list = []
-        for val in zip(cal_fit_list, cal_fit_err_list, cal_width_list, cal_width_err_list, cal_volume_list, cal_volume_err_list):  #interleaves lists together
-            cal_list.append(val)
-        sorted_cal_list = sorted(cal_list, reverse=True)
-
-        cal_data = open(fname + "_calibrated_data.txt", 'w')
-        for t in sorted_cal_list:
-            line = ' '.join(str(x) for x in t)
-            cal_data.write(line + '\n')
-        cal_data.close() 
-
-        return uncal_data, cal_data
 
 def parseArgs():
     parser = argparse.ArgumentParser()
